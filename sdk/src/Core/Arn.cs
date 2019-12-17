@@ -45,25 +45,29 @@ namespace Amazon
         /// <summary>
         /// Gets and sets the account ID associated with the ARN.
         /// </summary>
-        public string AccountId 
+        public string AccountId
         {
             get { return this._accountId; }
             set
             {
-                if(string.IsNullOrEmpty(value))
+                if (string.IsNullOrWhiteSpace(value))
                 {
                     this._accountId = string.Empty;
                 }
-                else
+                else if (IsAccountId(value))
                 {
-                    if (value.Length != 12 && value.ToCharArray().Any(x => !char.IsDigit(x)))
-                    {
-                        throw new AmazonClientException("AccountId is invalid. The AccountId length should be 12 and only contain numeric characters with no spaces or periods.");
-                    }
-
                     this._accountId = value;
                 }
+                else
+                {
+                    throw new AmazonClientException("AccountId is invalid. The AccountId length should be 12 and only contain numeric characters with no spaces or periods.");
+                }
             }
+        }
+
+        public static bool IsAccountId(string accountId)
+        {
+            return !string.IsNullOrWhiteSpace(accountId) && accountId.Length == 12 && accountId.ToCharArray().All(x => char.IsDigit(x));
         }
 
         /// <summary>
@@ -87,19 +91,37 @@ namespace Amazon
         /// </summary>
         /// <param name="arnString">String to parse into an ARN.</param>
         /// <param name="arn">The out parameter for the ARN object created by TryParse.</param>
-        /// <returns>True if the string can be parsed into an ARN object.</returns>
+        /// <returns>True if the string was parsed into an ARN object.</returns>
         public static bool TryParse(string arnString, out Arn arn)
         {
-            try
+            if (IsArn(arnString))
             {
-                arn = Parse(arnString);
-                return true;
+                var tokens = arnString.Split(new char[] { ':' }, 6);
+                if (tokens.Length == 6
+                    // Partition
+                    && !string.IsNullOrWhiteSpace(tokens[1])
+                    // Service
+                    && !string.IsNullOrWhiteSpace(tokens[2])
+                    // Region
+                    && !string.IsNullOrWhiteSpace(tokens[3])
+                    // AccountId: Why isn't this required?
+                    && (string.IsNullOrWhiteSpace(tokens[4]) || IsAccountId(tokens[4])
+                    // Resource
+                    && !string.IsNullOrWhiteSpace(tokens[5])))
+                {
+                    arn = new Arn
+                    {
+                        Partition = tokens[1],
+                        Service = tokens[2],
+                        Region = tokens[3],
+                        AccountId = tokens[4],
+                        Resource = tokens[5]
+                    };
+                    return true;
+                }
             }
-            catch(ArgumentException)
-            {
-                arn = null;
-                return false;
-            }
+            arn = null;
+            return false;
         }
 
         /// <summary>
@@ -116,7 +138,7 @@ namespace Amazon
                 throw new ArgumentNullException(nameof(arnString));
             }
 
-            const string malformedErrorMessage = "ARN is in incorrect format. ARN format is: arn:<parition>:<service>:<region>:<account-id>:<resource>";
+            const string malformedErrorMessage = "ARN is in incorrect format. ARN format is: arn:<partition>:<service>:<region>:<account-id>:<resource>";
 
             var tokens = arnString.Split(new char[] { ':' }, 6);
             if (tokens.Length != 6)
